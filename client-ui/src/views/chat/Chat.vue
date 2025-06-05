@@ -206,7 +206,7 @@
   .right .message {
     background: linear-gradient(to bottom, #caffec, transparent);
     margin-right: 23px;
-    padding: 10px 20px 20px;
+    padding: 15px 20px 25px;
   }
 
   .right .message::before {
