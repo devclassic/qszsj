@@ -99,12 +99,6 @@
   })
 </script>
 
-<style>
-  body {
-    background: #e0f2fc;
-  }
-</style>
-
 <style scoped>
   .login-box {
     width: 500px;
