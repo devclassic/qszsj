@@ -43,7 +43,7 @@ async def chat(request: Request):
         return {"success": False, "message": "请先在后台配置api地址"}
 
     data = await request.json()
-
+    conversation_id = data.get("conversation_id", "")
     app_id = data.get("app_id")
     app = await App.get_or_none(id=app_id)
 
@@ -61,6 +61,7 @@ async def chat(request: Request):
     }
     url = f"{api_base}/chat-messages"
     data = {
+        "conversation_id": conversation_id,
         "user": account_id,
         "inputs": {},
         "query": question,
@@ -72,6 +73,7 @@ async def chat(request: Request):
     async with AsyncClient(timeout=None) as client:
         res = await client.post(url, json=data, headers=headers)
         res = res.json()
+    conversation_id = res.get("conversation_id", None)
     text = res.get("answer", None)
     if not text:
         return {
@@ -82,4 +84,71 @@ async def chat(request: Request):
     history["answer"] = text
     history["answer_time"] = datetime.now()
     await History.create(**history)
-    return {"success": True, "message": "聊天成功", "data": text}
+    return {
+        "success": True,
+        "message": "聊天成功",
+        "data": {"conversation_id": conversation_id, "text": text},
+    }
+
+
+@router.post("/conversations")
+async def conversations(request: Request):
+    api_base = await get_dict("api_base")
+    if not api_base:
+        return {"success": False, "message": "请先在后台配置api地址"}
+
+    data = await request.json()
+
+    app_id = data.get("app_id")
+    account_id = data.get("account_id")
+
+    app = await App.get_or_none(id=app_id)
+
+    if not app:
+        return {"success": False, "message": "应用不存在"}
+
+    token = app.token
+    url = f"{api_base}/conversations?user={account_id}&limit=10"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    async with AsyncClient(timeout=None) as client:
+        res = await client.get(url, headers=headers)
+        res = res.json()
+    return {
+        "success": True,
+        "message": "获取成功",
+        "data": res,
+    }
+
+
+@router.post("/messages")
+async def conversations(request: Request):
+    api_base = await get_dict("api_base")
+    if not api_base:
+        return {"success": False, "message": "请先在后台配置api地址"}
+
+    data = await request.json()
+
+    app_id = data.get("app_id")
+    account_id = data.get("account_id")
+    conversation_id = data.get("conversation_id")
+
+    app = await App.get_or_none(id=app_id)
+
+    if not app:
+        return {"success": False, "message": "应用不存在"}
+
+    token = app.token
+    url = f"{api_base}/messages?user={account_id}&conversation_id={conversation_id}&limit=100"
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    async with AsyncClient(timeout=None) as client:
+        res = await client.get(url, headers=headers)
+        res = res.json()
+    return {
+        "success": True,
+        "message": "获取成功",
+        "data": res.get("data"),
+    }

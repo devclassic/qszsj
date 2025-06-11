@@ -1,15 +1,30 @@
 <template>
   <div class="box">
+    <div class="history" :class="{ show: state.showHistory }">
+      <div class="items">
+        <div
+          v-for="item of state.historys"
+          :key="item.id"
+          class="item"
+          @click="loadHistory(item.id)">
+          <div class="icon"></div>
+          <div class="text">
+            {{ format(item.updated_at * 1000, 'yyyy-MM-dd HH:mm:ss') }}
+          </div>
+        </div>
+      </div>
+      <div @click="closeHistory" class="close"></div>
+    </div>
     <div class="btn-back" @click="back"></div>
-    <div class="btn-history"></div>
+    <div v-loading="state.isHistoryLoading" @click="showHistory" class="btn-history"></div>
     <div @click="newChat" class="btn-new"></div>
-    <div ref="content" class="content">
+    <div v-loading="state.isContentLoading" ref="content" class="content">
       <template v-for="message of state.messages" :key="message.id">
         <div class="item" :class="message.type">
           <div class="item-box">
             <div v-if="message.type === 'left'" class="avatar"></div>
             <div class="message">
-              <template v-if="message.content">{{ message.content }}</template>
+              <div v-if="message.content" v-html="message.content"></div>
               <div v-else class="loading"></div>
             </div>
           </div>
@@ -17,19 +32,36 @@
       </template>
     </div>
     <input v-model="state.input" @keyup="inputKeyup" spellcheck="false" class="input" />
-    <div class="btn-asr"></div>
+    <div v-show="state.isRecording" class="recording"></div>
+    <div
+      @mousedown="asrMouseDown"
+      @mouseup="asrMouseUp"
+      @mouseout="asrMouseUp"
+      class="btn-asr"></div>
     <div @click="sendMessage" class="btn-send"></div>
   </div>
 </template>
 
 <script setup>
-  import { computed, reactive, useTemplateRef, nextTick } from 'vue'
+  import { computed, reactive, useTemplateRef, nextTick, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { useWindowSize } from '@vueuse/core'
   import { v4 as uuidv4 } from 'uuid'
+  import { ElMessage } from 'element-plus'
+  import { useSearchStore } from '../../stores/search'
+  import asr from '../../utils/asr'
+  import http from '../../utils/http'
+  import markdownit from 'markdown-it'
+  import { format } from 'date-fns'
+
+  const md = markdownit()
 
   const state = reactive({
     input: '',
+    isRecording: false,
+    showHistory: false,
+    isHistoryLoading: false,
+    isContentLoading: false,
     /*
      * messages structure:
      * {
@@ -39,7 +71,33 @@
      * }
      */
     messages: [],
+    historys: [],
   })
+
+  const app_id = localStorage.getItem('app_id')
+  const account_id = localStorage.getItem('account_id')
+  let conversation_id = ''
+
+  asr.ontext = text => {
+    state.input = text
+  }
+
+  watch(
+    () => state.isRecording,
+    newVal => {
+      if (newVal) {
+        asr.start(
+          () => {},
+          e => {
+            console.log('开启录音失败', e)
+            ElMessage.error('开启录音失败')
+          },
+        )
+      } else {
+        asr.stop()
+      }
+    },
+  )
 
   const contentRef = useTemplateRef('content')
 
@@ -54,15 +112,63 @@
     router.back()
   }
 
+  const showHistory = async () => {
+    state.isHistoryLoading = true
+    const res = await http.post('/client/conversations', { app_id, account_id })
+    if (res.data.success) {
+      state.historys = res.data.data.data
+    }
+    state.isHistoryLoading = false
+    state.showHistory = true
+  }
+
+  const loadHistory = async id => {
+    state.showHistory = false
+    state.isContentLoading = true
+    const res = await http.post('/client/messages', { app_id, account_id, conversation_id: id })
+    if (res.data.success) {
+      console.log(res.data.data)
+      state.messages = []
+      for (const item of res.data.data) {
+        state.messages.push({ id: uuidv4(), type: 'right', content: item.query })
+        state.messages.push({
+          id: uuidv4(),
+          type: 'left',
+          content: md.render(item.answer.replace(/<think>[\s\S]*?<\/think>/g, '')),
+        })
+        conversation_id = item.conversation_id
+      }
+      await nextTick()
+      contentRef.value.scrollTo({
+        top: contentRef.value.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+    state.isContentLoading = false
+  }
+
+  const closeHistory = () => {
+    state.showHistory = false
+  }
+
   const newChat = () => {
+    conversation_id = ''
     state.messages = []
     state.input = ''
+  }
+
+  const asrMouseDown = () => {
+    state.isRecording = true
+  }
+
+  const asrMouseUp = () => {
+    state.isRecording = false
   }
 
   const setMessage = (id, message) => {
     state.messages = state.messages.map(item => {
       if (item.id === id) {
-        item.content = message
+        item.content = md.render(message)
       }
       return item
     })
@@ -76,14 +182,26 @@
       top: contentRef.value.scrollHeight,
       behavior: 'smooth',
     })
-    setTimeout(async () => {
-      setMessage(answer.id, '我是机器人，你好！')
+    const res = await http.post('/client/chat', { app_id, account_id, conversation_id, question })
+    if (res.data.success) {
+      conversation_id = res.data.data.conversation_id
+      setMessage(answer.id, res.data.data.text.replace(/<think>[\s\S]*?<\/think>/g, ''))
       await nextTick()
       contentRef.value.scrollTo({
         top: contentRef.value.scrollHeight,
         behavior: 'smooth',
       })
-    }, 1000)
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  }
+
+  const searchStore = useSearchStore()
+  if (searchStore.value) {
+    const question = { id: uuidv4(), type: 'right', content: searchStore.value }
+    state.messages.push(question)
+    processMessage(searchStore.value)
+    searchStore.value = ''
   }
 
   const sendMessage = () => {
@@ -91,6 +209,8 @@
       state.messages.push({ id: uuidv4(), type: 'right', content: state.input })
       processMessage(state.input)
       state.input = ''
+    } else {
+      ElMessage.error('请输入有效内容')
     }
   }
 
@@ -109,6 +229,65 @@
     margin: 0 auto;
     position: relative;
     zoom: v-bind(scale);
+    overflow: hidden;
+  }
+
+  .history {
+    width: 300px;
+    height: 100%;
+    background: #e5f3fb;
+    position: absolute;
+    transition: transform 0.3s ease;
+    transform: translateX(-100%);
+    z-index: 3000;
+  }
+
+  .history.show {
+    transform: translateX(0);
+  }
+
+  .history .items {
+    width: 235px;
+    margin: 55px auto 0;
+  }
+
+  .history .item {
+    width: 235px;
+    height: 45px;
+    background: #fffdfd;
+    border: 1px solid #c5e7f6;
+    border-radius: 25px;
+    position: relative;
+    cursor: pointer;
+  }
+
+  .history .item .icon {
+    width: 20px;
+    height: 20px;
+    background: url('../../assets/images/history-item-icon.png') no-repeat center center / 100% 100%;
+    position: absolute;
+    top: 50%;
+    left: 25px;
+    transform: translateY(-50%);
+  }
+
+  .history .item .text {
+    height: 100%;
+    line-height: 42px;
+    color: #3e3a39;
+    position: absolute;
+    left: 55px;
+  }
+
+  .history .close {
+    width: 103px;
+    height: 29px;
+    background: url('../../assets/images/history-close.png') no-repeat center center / 100% 100%;
+    position: absolute;
+    bottom: 35px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: pointer;
   }
 
   .btn-back {
@@ -226,11 +405,25 @@
     font-size: 26px;
     border: none;
     outline: none;
-    color: #3e3a39;
     background: transparent;
+    color: #3e3a39;
     position: absolute;
     left: 140px;
     bottom: 63px;
+  }
+
+  .recording {
+    position: absolute;
+    bottom: 180px;
+    right: 256px;
+    background-color: rgba(228, 244, 253, 0.8);
+    background-image: url(../../assets/images/recording.gif);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 100px 80px;
+    border-radius: 10px;
+    width: 246px;
+    height: 130px;
   }
 
   .btn-asr {
