@@ -86,7 +86,8 @@
 
   const exportdata = async () => {
     const a = document.createElement('a')
-    a.href = import.meta.env.VITE_API_BASE_URL + '/history/export'
+    const baseurl = import.meta.env.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL : ''
+    a.href = baseurl + '/history/export'
     a.download = '问答历史数据.xlsx'
     a.click()
   }
