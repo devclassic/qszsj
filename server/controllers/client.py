@@ -108,22 +108,35 @@ async def conversations(request: Request):
         return {"success": False, "message": "应用不存在"}
 
     token = app.token
-    url = f"{api_base}/conversations?user={account_id}&limit=10"
     headers = {
         "Authorization": f"Bearer {token}",
     }
+
+    url = f"{api_base}/conversations?user={account_id}&limit=10"
     async with AsyncClient(timeout=None) as client:
         res = await client.get(url, headers=headers)
         res = res.json()
+
+    data = []
+    conversations = res.get("data", [])
+    for item in conversations:
+        conversation_id = item.get("id")
+        url = f"{api_base}/messages?user={account_id}&conversation_id={conversation_id}&limit=100"
+        async with AsyncClient(timeout=None) as client:
+            res = await client.get(url, headers=headers)
+            res = res.json()
+            query = res.get("data")[0].get("query")
+            data.append({"id": conversation_id, "query": query})
+
     return {
         "success": True,
         "message": "获取成功",
-        "data": res,
+        "data": data,
     }
 
 
 @router.post("/messages")
-async def conversations(request: Request):
+async def messages(request: Request):
     api_base = await get_dict("api_base")
     if not api_base:
         return {"success": False, "message": "请先在后台配置api地址"}
@@ -140,10 +153,11 @@ async def conversations(request: Request):
         return {"success": False, "message": "应用不存在"}
 
     token = app.token
-    url = f"{api_base}/messages?user={account_id}&conversation_id={conversation_id}&limit=100"
+
     headers = {
         "Authorization": f"Bearer {token}",
     }
+    url = f"{api_base}/messages?user={account_id}&conversation_id={conversation_id}&limit=100"
     async with AsyncClient(timeout=None) as client:
         res = await client.get(url, headers=headers)
         res = res.json()

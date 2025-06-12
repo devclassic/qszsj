@@ -8,8 +8,10 @@
           class="item"
           @click="loadHistory(item.id)">
           <div class="icon"></div>
-          <div class="text">
-            {{ format(item.updated_at * 1000, 'yyyy-MM-dd HH:mm:ss') }}
+          <div class="text" :title="item.query">
+            <el-text truncated>
+              {{ item.query }}
+            </el-text>
           </div>
         </div>
       </div>
@@ -116,7 +118,8 @@
     state.isHistoryLoading = true
     const res = await http.post('/client/conversations', { app_id, account_id })
     if (res.data.success) {
-      state.historys = res.data.data.data
+      state.historys = res.data.data
+      console.log(res.data.data)
     }
     state.isHistoryLoading = false
     state.showHistory = true
@@ -272,6 +275,7 @@
   }
 
   .history .item .text {
+    width: 160px;
     height: 100%;
     line-height: 42px;
     color: #3e3a39;
