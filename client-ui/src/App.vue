@@ -3,10 +3,13 @@
 </template>
 
 <script setup>
+  import { onMounted } from 'vue'
   import { useEventListener } from '@vueuse/core'
 
-  useEventListener('contextmenu', e => {
-    e.preventDefault()
+  onMounted(() => {
+    useEventListener(document, 'contextmenu', e => {
+      e.preventDefault()
+    })
   })
 </script>
 
