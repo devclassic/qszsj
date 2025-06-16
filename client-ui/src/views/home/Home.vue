@@ -2,7 +2,13 @@
   <div class="box">
     <input v-model="state.input" @keyup="inputKeyup" class="input" />
     <div v-show="state.isRecording" class="recording"></div>
-    <div @mousedown="asrMouseDown" @mouseup="asrMouseUp" @mouseout="asrMouseUp" class="asr"></div>
+    <div
+      @mousedown="asrMouseDown"
+      @mouseup="asrMouseUp"
+      @mouseout="asrMouseUp"
+      @touchstart="asrMouseDown"
+      @touchend="asrMouseUp"
+      class="asr"></div>
     <div @click="submit" class="submit"></div>
   </div>
 </template>

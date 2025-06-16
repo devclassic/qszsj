@@ -39,6 +39,8 @@
       @mousedown="asrMouseDown"
       @mouseup="asrMouseUp"
       @mouseout="asrMouseUp"
+      @touchstart="asrMouseDown"
+      @touchend="asrMouseUp"
       class="btn-asr"></div>
     <div @click="sendMessage" class="btn-send"></div>
   </div>
@@ -111,7 +113,7 @@
   })
 
   const back = () => {
-    router.back()
+    router.push('/home')
   }
 
   const showHistory = async () => {
