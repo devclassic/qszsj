@@ -315,7 +315,7 @@
   }
 
   .btn-new {
-    width: 153px;
+    width: 180px;
     height: 42px;
     position: absolute;
     top: 45px;
