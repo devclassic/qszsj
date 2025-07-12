@@ -56,7 +56,6 @@
   import asr from '../../utils/asr'
   import http from '../../utils/http'
   import markdownit from 'markdown-it'
-  import { format } from 'date-fns'
 
   const md = markdownit()
 
@@ -170,10 +169,22 @@
     state.isRecording = false
   }
 
+  let tempmsg = ''
   const setMessage = (id, message) => {
     state.messages = state.messages.map(item => {
       if (item.id === id) {
-        item.content = md.render(message)
+        tempmsg += message
+        const reg = /<think>[\s\S]*?<\/think>/
+        const match = tempmsg.match(reg)
+        if (match) {
+          const think = match[0]
+          let tk = think.replace('<think>', '').replace('</think>', '')
+          tk = md.render(tk)
+          tk = `<div class="think-proc" onclick="$('think').is(':visible')?$('think').hide():$('think').show()">【思考过程】</div><think>${tk}</think>`
+          item.content = tk + md.render(tempmsg.replace(think, ''))
+        } else {
+          item.content = md.render(tempmsg)
+        }
       }
       return item
     })
@@ -187,17 +198,42 @@
       top: contentRef.value.scrollHeight,
       behavior: 'smooth',
     })
-    const res = await http.post('/client/chat', { app_id, account_id, conversation_id, question })
-    if (res.data.success) {
-      conversation_id = res.data.data.conversation_id
-      setMessage(answer.id, res.data.data.text.replace(/<think>[\s\S]*?<\/think>/g, ''))
-      await nextTick()
-      contentRef.value.scrollTo({
-        top: contentRef.value.scrollHeight,
-        behavior: 'smooth',
-      })
-    } else {
-      ElMessage.error(res.data.message)
+    const baseurl = import.meta.env.VITE_API_BASE_URL ?? ''
+    const url = baseurl + '/client/chat'
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ app_id, account_id, conversation_id, question }),
+    })
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = decoder.decode(value, { stream: true })
+      try {
+        const data = JSON.parse(chunk.trim())
+        switch (data.event) {
+          case 'message':
+            setMessage(answer.id, data.answer)
+            await nextTick()
+            contentRef.value.scrollTo({
+              top: contentRef.value.scrollHeight,
+              behavior: 'smooth',
+            })
+            break
+          case 'message_end':
+            await http.post('/client/savechat', { account_id, app_id, question, answer: tempmsg })
+            tempmsg = ''
+            conversation_id = data.conversation_id
+            break
+        }
+      } catch (e) {
+        // 非 JSON 行忽略
+      }
     }
   }
 
@@ -225,6 +261,20 @@
     }
   }
 </script>
+
+<style>
+  .think-proc {
+    margin-bottom: 10px;
+    cursor: pointer;
+    color: #777777;
+  }
+
+  think {
+    color: #777777;
+    display: none;
+    margin-bottom: 10px;
+  }
+</style>
 
 <style scoped>
   .box {

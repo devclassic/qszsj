@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from models import Account, App, History
 from uuid import uuid4
 from service.common import get_dict
@@ -53,41 +54,72 @@ async def chat(request: Request):
     token = app.token
     account_id = data.get("account_id")
     question = data.get("question")
-    history = {
-        "account_id": account_id,
-        "app_id": app_id,
-        "question": question,
-        "question_time": datetime.now(),
-    }
     url = f"{api_base}/chat-messages"
     data = {
         "conversation_id": conversation_id,
         "user": account_id,
         "inputs": {},
         "query": question,
-        "response_mode": "blocking",
+        "response_mode": "streaming",
     }
     headers = {
         "Authorization": f"Bearer {token}",
     }
-    async with AsyncClient(timeout=None) as client:
-        res = await client.post(url, json=data, headers=headers)
-        res = res.json()
-    conversation_id = res.get("conversation_id", None)
-    text = res.get("answer", None)
-    if not text:
-        return {
-            "success": False,
-            "message": "聊天失败，未获取到回答",
-            "data": "服务器异常",
-        }
-    history["answer"] = text
-    history["answer_time"] = datetime.now()
-    await History.create(**history)
+
+    async def stream_response():
+        async with AsyncClient(timeout=None) as client:
+            async with client.stream("POST", url, json=data, headers=headers) as resp:
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        yield line[6:]
+
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+    #     res = await client.post(url, json=data, headers=headers)
+    #     res = res.json()
+    # conversation_id = res.get("conversation_id", None)
+    # text = res.get("answer", None)
+    # if not text:
+    #     return {
+    #         "success": False,
+    #         "message": "聊天失败，未获取到回答",
+    #         "data": "服务器异常",
+    #     }
+    # history["answer"] = text
+    # history["answer_time"] = datetime.now()
+    # await History.create(**history)
+    # return {
+    #     "success": True,
+    #     "message": "聊天成功",
+    #     "data": {"conversation_id": conversation_id, "text": text},
+    # }
+
+
+@router.post("/savechat")
+async def savechat(request: Request):
+    data = await request.json()
+    account_id = data.get("account_id")
+    app_id = data.get("app_id")
+    question = data.get("question")
+    question_time = data.get("question_time")
+    answer = data.get("answer")
+    answer_time = data.get("answer_time")
+    await History.create(
+        account_id=account_id,
+        app_id=app_id,
+        question=question,
+        question_time=datetime.now(),
+        answer=answer,
+        answer_time=datetime.now(),
+    )
     return {
         "success": True,
-        "message": "聊天成功",
-        "data": {"conversation_id": conversation_id, "text": text},
+        "message": "保存成功",
+        "data": {},
     }
 
 
