@@ -181,9 +181,10 @@
           let tk = think.replace('<think>', '').replace('</think>', '')
           tk = md.render(tk)
           tk = `<div class="think-proc" onclick="$('think').is(':visible')?$('think').hide():$('think').show()">【思考过程】</div><think>${tk}</think>`
-          item.content = tk + md.render(tempmsg.replace(think, ''))
+          item.content =
+            tk + md.render(tempmsg.replace('```markdown', '').replace('```', '').replace(think, ''))
         } else {
-          item.content = md.render(tempmsg)
+          item.content = md.render(tempmsg.replace('```markdown', '').replace('```', ''))
         }
       }
       return item
