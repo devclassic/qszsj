@@ -70,14 +70,11 @@ async def chat(request: Request):
         async with AsyncClient(timeout=None) as client:
             async with client.stream("POST", url, json=data, headers=headers) as resp:
                 async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        yield line[6:]
+                    yield line + "\n"
+                    # if line.startswith("data: "):
+                    #     yield line[6:] + "\n"
 
-    return StreamingResponse(
-        stream_response(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return StreamingResponse(stream_response(), media_type="text/event-stream")
 
     #     res = await client.post(url, json=data, headers=headers)
     #     res = res.json()

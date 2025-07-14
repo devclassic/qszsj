@@ -56,6 +56,7 @@
   import asr from '../../utils/asr'
   import http from '../../utils/http'
   import markdownit from 'markdown-it'
+  import { fetchEventSource } from '@microsoft/fetch-event-source'
 
   const md = markdownit()
 
@@ -202,40 +203,38 @@
     const baseurl = import.meta.env.VITE_API_BASE_URL ?? ''
     const url = baseurl + '/client/chat'
 
-    const res = await fetch(url, {
+    await fetchEventSource(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ app_id, account_id, conversation_id, question }),
-    })
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = decoder.decode(value, { stream: true })
-      try {
-        const data = JSON.parse(chunk.trim())
-        switch (data.event) {
-          case 'message':
-            setMessage(answer.id, data.answer)
-            await nextTick()
-            contentRef.value.scrollTo({
-              top: contentRef.value.scrollHeight,
-              behavior: 'smooth',
-            })
-            break
-          case 'message_end':
-            await http.post('/client/savechat', { account_id, app_id, question, answer: tempmsg })
-            tempmsg = ''
-            conversation_id = data.conversation_id
-            break
+      onopen() {
+        tempmsg = ''
+      },
+      async onmessage(e) {
+        try {
+          const data = JSON.parse(e.data)
+          switch (data.event) {
+            case 'message':
+              setMessage(answer.id, data.answer)
+              await nextTick()
+              contentRef.value.scrollTo({
+                top: contentRef.value.scrollHeight,
+                behavior: 'smooth',
+              })
+              break
+            case 'message_end':
+              await http.post('/client/savechat', { account_id, app_id, question, answer: tempmsg })
+              tempmsg = ''
+              conversation_id = data.conversation_id
+              break
+          }
+        } catch (e) {
+          // 非 JSON 行忽略
         }
-      } catch (e) {
-        // 非 JSON 行忽略
-      }
-    }
+      },
+    })
   }
 
   const searchStore = useSearchStore()
